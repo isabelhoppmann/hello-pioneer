@@ -3,22 +3,101 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hello Pioneer</title>
+  <title>Pioneer Notes</title>
   <style>
-    body {
-      font-family: sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-      background: #0a0a0a;
-      color: #fff;
-    }
-    h1 { font-size: 3rem; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; padding: 40px 20px; }
+    h1 { font-size: 2rem; margin-bottom: 24px; }
+    .add-row { display: flex; gap: 10px; margin-bottom: 32px; }
+    input { flex: 1; padding: 10px 14px; font-size: 16px; background: #1a1a1a; border: 1px solid #333; color: #fff; border-radius: 6px; }
+    button { padding: 10px 20px; font-size: 16px; background: #22c55e; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #16a34a; }
+    ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    li { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 14px 18px; font-size: 16px; }
+    .empty { color: #555; font-style: italic; }
+    .error { color: #f87171; margin-bottom: 16px; }
+    .container { max-width: 600px; margin: 0 auto; }
   </style>
 </head>
 <body>
-  <h1>Hello, Pioneer! 🌱</h1>
+  <div class="container">
+    <h1>Pioneer Notes</h1>
+    <p id="error" class="error" style="display:none"></p>
+    <div class="add-row">
+      <input id="title-input" type="text" placeholder="Write a note..." />
+      <button id="add-btn">Add</button>
+    </div>
+    <ul id="notes-list"><li class="empty">Loading...</li></ul>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://lbvgiannimcxlddtyvuy.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxidmdpYW5uaW1jeGxkZHR5dnV5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTMwNzAsImV4cCI6MjA5Mjg4OTA3MH0.vSHg2s1v_NTS7bRWhP9W8fG9MWQJYpGE-kXCknHceYU';
+
+    async function fetchNotes() {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/notes?select=*&order=created_at.desc`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    async function addNote(title) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/notes`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation'
+        },
+        body: JSON.stringify({ title })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function renderNotes(notes) {
+      const list = document.getElementById('notes-list');
+      if (notes.length === 0) {
+        list.innerHTML = '<li class="empty">No notes yet. Add one above!</li>';
+        return;
+      }
+      list.innerHTML = notes.map(n => `<li>${n.title ?? '(untitled)'}</li>`).join('');
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    async function load() {
+      try {
+        renderNotes(await fetchNotes());
+      } catch (e) {
+        showError('Failed to load notes: ' + e.message);
+      }
+    }
+
+    document.getElementById('add-btn').addEventListener('click', async () => {
+      const input = document.getElementById('title-input');
+      const title = input.value.trim();
+      if (!title) return;
+      input.value = '';
+      try {
+        await addNote(title);
+        renderNotes(await fetchNotes());
+      } catch (e) {
+        showError('Failed to add note: ' + e.message);
+      }
+    });
+
+    document.getElementById('title-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('add-btn').click();
+    });
+
+    load();
+  </script>
 </body>
 </html>
