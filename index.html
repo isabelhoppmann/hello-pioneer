@@ -8,36 +8,78 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; padding: 40px 20px; }
     h1 { font-size: 2rem; margin-bottom: 24px; }
-    .add-row { display: flex; gap: 10px; margin-bottom: 32px; }
-    input { flex: 1; padding: 10px 14px; font-size: 16px; background: #1a1a1a; border: 1px solid #333; color: #fff; border-radius: 6px; }
-    button { padding: 10px 20px; font-size: 16px; background: #22c55e; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
-    button:hover { background: #16a34a; }
+    h2 { font-size: 1.1rem; color: #888; margin: 32px 0 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .add-row { display: flex; gap: 10px; margin-bottom: 8px; }
+    input[type="text"] { flex: 1; padding: 10px 14px; font-size: 16px; background: #1a1a1a; border: 1px solid #333; color: #fff; border-radius: 6px; }
+    button.primary { padding: 10px 20px; font-size: 16px; background: #22c55e; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button.primary:hover { background: #16a34a; }
+    button.share { padding: 4px 10px; font-size: 13px; background: #1e3a5f; color: #7dd3fc; border: 1px solid #2563eb; border-radius: 4px; cursor: pointer; }
+    button.share:hover { background: #1d4ed8; color: #fff; }
     ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
-    li { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 14px 18px; font-size: 16px; }
-    .empty { color: #555; font-style: italic; }
-    .error { color: #f87171; margin-bottom: 16px; }
+    li.note { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+    li.note span { flex: 1; font-size: 16px; }
+    li.event { background: #111; border-left: 3px solid #2563eb; border-radius: 4px; padding: 10px 14px; font-size: 14px; color: #aaa; }
+    li.event strong { color: #7dd3fc; }
+    .empty { color: #555; font-style: italic; padding: 0 !important; border: none !important; background: none !important; }
+    .error { color: #f87171; margin-bottom: 16px; font-size: 14px; }
     .container { max-width: 600px; margin: 0 auto; }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #1a1a1a; border: 1px solid #333; border-radius: 10px; padding: 24px; width: 340px; display: flex; flex-direction: column; gap: 12px; }
+    .modal h3 { font-size: 1.1rem; }
+    .modal input { width: 100%; padding: 10px 12px; font-size: 15px; background: #0a0a0a; border: 1px solid #333; color: #fff; border-radius: 6px; }
+    .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-btns button { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; }
+    .btn-cancel { background: #2a2a2a; color: #aaa; }
+    .btn-send { background: #22c55e; color: #000; font-weight: 600; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Pioneer Notes</h1>
     <p id="error" class="error" style="display:none"></p>
+
     <div class="add-row">
       <input id="title-input" type="text" placeholder="Write a note..." />
-      <button id="add-btn">Add</button>
+      <button class="primary" id="add-btn">Add</button>
     </div>
+
+    <h2>Notes</h2>
     <ul id="notes-list"><li class="empty">Loading...</li></ul>
+
+    <h2>Email Activity</h2>
+    <ul id="events-list"><li class="empty">No email activity yet.</li></ul>
+  </div>
+
+  <!-- Share modal -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <h3>Share note via email</h3>
+      <p id="modal-note-title" style="color:#aaa;font-size:14px"></p>
+      <input id="email-input" type="email" placeholder="Recipient email address" />
+      <div class="modal-btns">
+        <button class="btn-cancel" id="modal-cancel">Cancel</button>
+        <button class="btn-send" id="modal-send">Send</button>
+      </div>
+    </div>
   </div>
 
   <script>
     const SUPABASE_URL = 'https://lbvgiannimcxlddtyvuy.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxidmdpYW5uaW1jeGxkZHR5dnV5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTMwNzAsImV4cCI6MjA5Mjg4OTA3MH0.vSHg2s1v_NTS7bRWhP9W8fG9MWQJYpGE-kXCknHceYU';
 
+    const headers = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
+
+    let pendingShare = null;
+
     async function fetchNotes() {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/notes?select=*&order=created_at.desc`, {
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
-      });
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/notes?select=*&order=created_at.desc`, { headers });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    async function fetchEvents() {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/email_events?select=*&order=created_at.desc&limit=20`, { headers });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     }
@@ -45,13 +87,8 @@
     async function addNote(title) {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/notes`, {
         method: 'POST',
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=representation'
-        },
-        body: JSON.stringify({ title })
+        headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify({ title }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -59,25 +96,34 @@
 
     function renderNotes(notes) {
       const list = document.getElementById('notes-list');
-      if (notes.length === 0) {
-        list.innerHTML = '<li class="empty">No notes yet. Add one above!</li>';
-        return;
-      }
-      list.innerHTML = notes.map(n => `<li>${n.title ?? '(untitled)'}</li>`).join('');
+      if (!notes.length) { list.innerHTML = '<li class="empty">No notes yet.</li>'; return; }
+      list.innerHTML = notes.map(n => `
+        <li class="note" data-id="${n.id}" data-title="${encodeURIComponent(n.title ?? '')}">
+          <span>${n.title ?? '(untitled)'}</span>
+          <button class="share" onclick="openShare(${n.id}, '${(n.title ?? '').replace(/'/g,"\\'")}')">Share</button>
+        </li>`).join('');
+    }
+
+    function renderEvents(events) {
+      const list = document.getElementById('events-list');
+      if (!events.length) { list.innerHTML = '<li class="empty">No email activity yet.</li>'; return; }
+      list.innerHTML = events.map(e => `
+        <li class="event">
+          <strong>${e.event_type ?? 'event'}</strong> → ${e.recipient ?? '?'}
+          ${e.subject ? `<br><span style="color:#666">${e.subject}</span>` : ''}
+        </li>`).join('');
     }
 
     function showError(msg) {
       const el = document.getElementById('error');
       el.textContent = msg;
       el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 5000);
     }
 
     async function load() {
-      try {
-        renderNotes(await fetchNotes());
-      } catch (e) {
-        showError('Failed to load notes: ' + e.message);
-      }
+      try { renderNotes(await fetchNotes()); } catch (e) { showError('Failed to load notes: ' + e.message); }
+      try { renderEvents(await fetchEvents()); } catch (e) { /* non-critical */ }
     }
 
     document.getElementById('add-btn').addEventListener('click', async () => {
@@ -85,16 +131,43 @@
       const title = input.value.trim();
       if (!title) return;
       input.value = '';
-      try {
-        await addNote(title);
-        renderNotes(await fetchNotes());
-      } catch (e) {
-        showError('Failed to add note: ' + e.message);
-      }
+      try { await addNote(title); renderNotes(await fetchNotes()); }
+      catch (e) { showError('Failed to add note: ' + e.message); }
     });
 
     document.getElementById('title-input').addEventListener('keydown', e => {
       if (e.key === 'Enter') document.getElementById('add-btn').click();
+    });
+
+    function openShare(id, title) {
+      pendingShare = { id, title };
+      document.getElementById('modal-note-title').textContent = `"${title}"`;
+      document.getElementById('email-input').value = '';
+      document.getElementById('modal').classList.add('open');
+      document.getElementById('email-input').focus();
+    }
+
+    document.getElementById('modal-cancel').addEventListener('click', () => {
+      document.getElementById('modal').classList.remove('open');
+      pendingShare = null;
+    });
+
+    document.getElementById('modal-send').addEventListener('click', async () => {
+      const to = document.getElementById('email-input').value.trim();
+      if (!to || !pendingShare) return;
+      document.getElementById('modal').classList.remove('open');
+      try {
+        const res = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to, noteTitle: pendingShare.title }),
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+        await load();
+      } catch (e) {
+        showError('Failed to send email: ' + e.message);
+      }
+      pendingShare = null;
     });
 
     load();
